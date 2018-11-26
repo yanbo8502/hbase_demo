@@ -7,4 +7,5 @@ import org.apache.hadoop.hbase.client.Connection;
  */
 public interface HBaseConnectionProvider {
     public Connection provideConnection();
+    public void release();
 }

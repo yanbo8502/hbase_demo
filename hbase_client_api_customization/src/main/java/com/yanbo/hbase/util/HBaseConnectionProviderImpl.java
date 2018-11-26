@@ -12,9 +12,9 @@ import java.util.concurrent.Executors;
 
 public class HBaseConnectionProviderImpl implements HBaseConnectionProvider {
     private Connection conn;
-
+    private ExecutorService pool = null;
     public HBaseConnectionProviderImpl(final Configuration conf) throws Exception {
-        final ExecutorService pool = Executors.newFixedThreadPool(10);//建立一个数量为10的线程池
+        pool = Executors.newFixedThreadPool(10);//建立一个数量为10的线程池
         String user = conf.get("hbase.user.name");
         System.out.println(user);
         conn = UserGroupInformation.createRemoteUser(user).doAs(new PrivilegedExceptionAction<Connection>() {
@@ -23,9 +23,10 @@ public class HBaseConnectionProviderImpl implements HBaseConnectionProvider {
                 return ConnectionFactory.createConnection(conf, pool);
             }
         });
-//        if(conn == null || conn.isClosed()){
-//            conn = ConnectionFactory.createConnection(conf);
-//        }
+       if(conn == null || conn.isClosed()){
+            conn = ConnectionFactory.createConnection(conf);
+       }
+
     }
     /**
      * 数据源提供方法
@@ -35,5 +36,13 @@ public class HBaseConnectionProviderImpl implements HBaseConnectionProvider {
     @Override
     public Connection provideConnection() {
         return conn;
+    }
+
+    @Override
+    public void release() {
+            if(pool!=null)
+            {
+                pool.shutdown();
+            }
     }
 }

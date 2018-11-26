@@ -16,7 +16,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
+import java.util.concurrent.Future;
 
 
 public class Main {
@@ -39,7 +39,9 @@ public class Main {
 		//HBaseTableOperation.test(args);
 		Date start = new Date();
 		//test_scan();
-		test_second_index();
+		//test_second_index();
+		//testBatchSecondaryIndex();
+		testBatchSecondaryIndexMT();
 		System.out.println("done!");
 		Date stop = new Date();
 		System.out.println((stop.getTime() - start.getTime())/60000 + "  minutes");
@@ -132,6 +134,7 @@ public class Main {
 				e.printStackTrace();
 			}  finally {
 				if (data_table != null) data_table.close();
+				if(impl!=null) impl.release();
 			}
 		}catch (Exception e) {
 			// TODO Auto-generated catch block
@@ -207,8 +210,123 @@ public class Main {
 
 		}
 
-
 	}
 
-} 
+	private static void testBatchSecondaryIndex() throws IOException {
+		System.out.println("batch test_second_index ...");
+		Connection connection = null;
+
+		try {
+			HBaseConnectionProviderImpl impl = new HBaseConnectionProviderImpl(config);
+			connection = impl.provideConnection();
+			System.out.println("connected!");
+			String data_table_name = "testG:data_table";
+
+			Table data_table = connection.getTable(TableName.valueOf(data_table_name));
+
+			System.out.println("get table:" + data_table.getName());
+			Date date = new Date();
+			long start = date.getTime();
+			int max_size =1000000;
+			for(Integer i=5001;i<max_size;i++)
+			{
+
+				try {
+					String phone = String.format("13%09d", i);
+					String cid = String.format("c%d", i);
+					String id = i.toString();
+					String rowKey = String.format("%s_%s_%s", id,cid,phone);
+					//System.out.println(rowKey);
+					Put put = new Put(rowKey.getBytes());
+					put.addColumn("f1".getBytes(), "id".getBytes(), id.getBytes());
+					put.addColumn("f1".getBytes(), "cid".getBytes(), cid.getBytes());
+					put.addColumn("f1".getBytes(), "phone".getBytes(), phone.getBytes());
+					put.addColumn("f2".getBytes(), "data".getBytes(), i.toString().getBytes());
+					data_table.put(put);
+
+					// Close your table and cluster connection.
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}  finally {
+				}
+
+			}
+			long end = date.getTime();
+			long duration = end - start;
+
+			System.out.println("All puts done!");
+			System.out.println(String.format("cost totlaly %d s", duration));
+			if (data_table != null) data_table.close();
+			if(impl!=null) impl.release();
+		}
+		catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} finally {
+			if(connection!=null)
+			{
+				connection.close();
+			}
+		}
+	}
+
+	private static void testBatchSecondaryIndexMT() throws IOException {
+		System.out.println("batch test_second_index ...");
+		Connection connection = null;
+		ExecutorService pool = Executors.newFixedThreadPool(10);//建立一个数量为10的线程池
+
+		try {
+			HBaseConnectionProviderImpl impl = new HBaseConnectionProviderImpl(config);
+			connection = impl.provideConnection();
+			System.out.println("connected!");
+			String data_table_name = "testG:data_table";
+
+			Table data_table = connection.getTable(TableName.valueOf(data_table_name));
+
+			System.out.println("get table:" + data_table.getName());
+			Date date = new Date();
+			long start = date.getTime();
+			long total_size =1000;
+			int parallize_num = 10;
+			Long part_size = total_size/ parallize_num;
+			long start_point = 1000001;
+			long total_end = total_size + start_point;
+			List<Future> tresults = new ArrayList<>();
+			for(int i=0;i<parallize_num;i++)
+			{
+				long part_start = part_size*i+start_point;
+				long part_end = part_size*(i+1)+start_point;
+				part_end = part_end>total_end?total_size:part_end;
+				Future f = pool.submit(new DataIO(part_start, part_end, data_table));
+				tresults.add(f);
+
+
+			}
+
+			for(Future f : tresults)
+			{
+				f.get();
+			}
+			date = new Date();
+			long end = date.getTime();
+			double duration = (end - start)/1000;
+
+			System.out.println("All puts done!");
+			System.out.println(String.format("cost totlaly %d s", duration));
+			if (data_table != null) data_table.close();
+			if(impl!=null) impl.release();
+		}
+		catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} finally {
+			if(connection!=null)
+			{
+				connection.close();
+			}
+		}
+	}
+
+}
 

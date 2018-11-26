@@ -2,11 +2,8 @@ package com.yanbo.hbase;
 
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
-import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Durability;
 import org.apache.hadoop.hbase.client.Put;
-import org.apache.hadoop.hbase.client.Table;
-import org.apache.hadoop.hbase.coprocessor.BaseRegionObserver;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
 import org.apache.hadoop.hbase.regionserver.wal.WALEdit;
@@ -14,46 +11,38 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
-//for coprocessor writing
+//for coproces
+// sor writing
 
-public class TestCoprocessorData extends BaseRegionObserver {
+public class TestCoprocessorData extends SecondIndexCoprocessor {
     private static final Logger logger = LoggerFactory.getLogger(TestCoprocessorData.class);
-    static Table table = null;
-
-    private final static String SOURCE_TABLE = "testG:index_table";
-
+    final  static String INDEX_TABLE = "testG:index_table";
     @Override
     public void start(CoprocessorEnvironment env) throws IOException {
-        try {
-            logger.info(String.format("%s Observer TestCoprocessorData started ...", Constant.version_str));
-
-            ExecutorService pool = Executors.newFixedThreadPool(10);//建立一个数量为10的线程池
-            table = env.getTable(TableName.valueOf(SOURCE_TABLE), pool);
-
-        } catch (Exception ex) {
-            logger.error(ex.getMessage());
-
-        }
+          SOURCE_TABLE = INDEX_TABLE;
+          super.start(env);
 
     }
 
-
+    /*
     @Override
-    public void stop(CoprocessorEnvironment env) throws IOException {
+    public void postStartRegionOperation(final ObserverContext<RegionCoprocessorEnvironment> ctx,
+                                         Region.Operation op) throws IOException {
         try {
-            logger.info("Observer TestCoprocessorData stopped ...");
+            logger.info("Observer TestCoprocessorData postStartRegionOperation ...");
+            if(table!=null) table.close();
+            table = ctx.getEnvironment().getTable(TableName.valueOf(SOURCE_TABLE), pool);
 
         } catch (Exception ex) {
             logger.error(ex.getMessage());
 
         }
 
-
     }
-/*
+    */
+
+    /*
     @Override
     public void prePut(ObserverContext<RegionCoprocessorEnvironment> e,
                        Put put, WALEdit edit, Durability durability) throws IOException {
@@ -85,19 +74,28 @@ public class TestCoprocessorData extends BaseRegionObserver {
                 Put(cell.getValueArray(), cell.getValueOffset(),cell.getValueLength());
         putIndex.addColumn("f1".getBytes(), "rowKey".getBytes(), rowKey);
         table.put(putIndex);
-        table.close();
     }
 
     @Override
     public void postPut(ObserverContext<RegionCoprocessorEnvironment> e,
                         Put put, WALEdit edit, Durability durability) throws IOException {
         try {
-            logger.info(String.format("%s, %s postPut", Constant.version_str, SOURCE_TABLE));
-            //super.prePut(e, put, edit, durability);
+            //logger.info(String.format("%s, %s postPut", Constant.version_str, SOURCE_TABLE));
+
             put2Index(put);
 
         } catch (Exception ex) {
-            logger.error(ex.getMessage());
+            logger.error("postPut: " + ex.getMessage());
+            processOperationException(e, ex);
+            try {
+                logger.info(String.format("%s, %s postPut again", Constant.version_str, SOURCE_TABLE));
+
+                put2Index(put);
+
+            } catch (Exception exx) {
+                logger.error("postPut: " + exx.getMessage());
+
+            }
 
         }
 
